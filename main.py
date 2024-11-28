@@ -44,6 +44,26 @@ configuration: Dict[str, bool] = {
     "numbers": True,
 }
 
+def saved_account(args: argparse.Namespace):
+
+    if args.update:
+        AccountTransaction.add_new_passgwn(args)
+    elif not args.update:
+        if int(args.c) == 0:
+            configuration["numbers"] = False
+            configuration["simbols"] = False
+        elif int(args.c) == 1:
+            configuration["simbols"] = False
+        elif int(args.c) == 2 and args.c > 1:
+            pass
+        else:
+            print("[ERROR] No se encontro el parametro -c.")
+
+        AccountTransaction.saved_account(args)
+
+def get_account(args: argparse.Namespace):
+    return AccountTransaction.getting_account(args)
+
 
 class AccountTransaction:
 
@@ -59,7 +79,21 @@ class AccountTransaction:
         return cls._conection.sesion.scalars(stmt)
 
     @classmethod
-    def getting_account(cls, args: argparse.Namespace):
+    def find_account_by_id(cls, args: argparse.Namespace):
+        return cls._conection.sesion.query(UserOrm).get(args.id)
+
+    @classmethod
+    def add_new_passgwn(cls, args: argparse.Namespace):
+        user = cls.getting_account(args)
+        passgen1 = PasswordGeneratorOrm(
+            generated_password=PasswordGenerator().model_dump()["generated_password"],
+            platform=args.platform,
+        )
+        if user != None:
+            user.generated_passwords.append(passgen1)
+
+    @classmethod
+    def getting_account(cls, args: argparse.Namespace) -> UserOrm | None:
         # stmt = select(UserOrm).where(UserOrm.username.in_([args.account]))
         #
         # for user in cls._conection.sesion.scalars(stmt):
@@ -74,23 +108,13 @@ class AccountTransaction:
 
         if user:
             print(user)
+            return user
         elif not user:
             print("Usuaurio o contraseña incorrecto.")
         # return cls._conection.sesion.scalars(stmt).one()
 
     @classmethod
     def saved_account(cls, args: argparse.Namespace):
-
-        if int(args.c) == 0:
-            print(EnumComplexity.BASIC.name)
-            configuration["numbers"] = False
-            configuration["simbols"] = False
-        elif int(args.c) == 1:
-            print(EnumComplexity.INTERMEDIO.name)
-            configuration["simbols"] = False
-        elif int(args.c) == 2 and args.c > 1:
-            print(EnumComplexity.AVANZADO.name)
-            pass
 
         user = UserOrm(
             username=args.username,
