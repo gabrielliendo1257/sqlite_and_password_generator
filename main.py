@@ -35,7 +35,6 @@ path_db = (
 
 Base = declarative_base()
 
-lenth_password: int = 17
 
 configuration: Dict[str, bool] = {
     "upper_case": True,
@@ -44,24 +43,29 @@ configuration: Dict[str, bool] = {
     "numbers": True,
 }
 
+
 def saved_account(args: argparse.Namespace):
+    user = AccountTransaction.getting_account(args)
 
-    if args.update:
-        AccountTransaction.add_new_passgwn(args)
-    elif not args.update:
-        if int(args.c) == 0:
-            configuration["numbers"] = False
-            configuration["simbols"] = False
-        elif int(args.c) == 1:
-            configuration["simbols"] = False
-        elif int(args.c) == 2 and args.c > 1:
-            pass
-        else:
-            print("[ERROR] No se encontro el parametro -c.")
+    if user != None and hasattr(args, "update"):
 
+        if args.update:
+            AccountTransaction.add_new_passgwn(args)
+        elif not args.update:
+            if int(args.c) == 0:
+                configuration["numbers"] = False
+                configuration["simbols"] = False
+            elif int(args.c) == 1:
+                configuration["simbols"] = False
+            elif int(args.c) == 2 and args.c > 1:
+                pass
+            else:
+                print("[ERROR] No se encontro el parametro -c.")
+    elif user == None:
         AccountTransaction.saved_account(args)
 
-def get_account(args: argparse.Namespace):
+
+def get_account(args: argparse.Namespace) -> UserOrm:
     return AccountTransaction.getting_account(args)
 
 
@@ -84,13 +88,21 @@ class AccountTransaction:
 
     @classmethod
     def add_new_passgwn(cls, args: argparse.Namespace):
+
+        if hasattr(args, "length"):
+            obj_passgen = PasswordGenerator(length=args.length)
+        else:
+            obj_passgen = PasswordGenerator()
+
         user = cls.getting_account(args)
         passgen1 = PasswordGeneratorOrm(
-            generated_password=PasswordGenerator().model_dump()["generated_password"],
+            generated_password=obj_passgen.model_dump()["generated_password"],
             platform=args.platform,
         )
         if user != None:
             user.generated_passwords.append(passgen1)
+            cls._conection.sesion.commit()
+            print("Usuario " + user.username + " actualizado con exito.")
 
     @classmethod
     def getting_account(cls, args: argparse.Namespace) -> UserOrm | None:
@@ -107,23 +119,30 @@ class AccountTransaction:
         user = cls._conection.sesion.scalars(get_account_stmt).first()
 
         if user:
-            print(user)
+            print(
+                "Usuario " + args.username + " encontrado en la base de datos --> ",
+                user,
+            )
             return user
         elif not user:
-            print("Usuaurio o contraseña incorrecto.")
+            print("Usuario no existente o usuario y/o contraseña incorrectos.")
         # return cls._conection.sesion.scalars(stmt).one()
 
     @classmethod
     def saved_account(cls, args: argparse.Namespace):
+
+        if hasattr(args, "length"):
+            obj_passgen = PasswordGenerator(length=args.length)
+        else:
+            obj_passgen = PasswordGenerator()
+
 
         user = UserOrm(
             username=args.username,
             password=args.password,
             generated_passwords=[
                 PasswordGeneratorOrm(
-                    generated_password=PasswordGenerator().model_dump()[
-                        "generated_password"
-                    ],
+                    generated_password=obj_passgen.model_dump()["generated_password"],
                     platform=args.platform,
                 )
             ],
@@ -132,6 +151,7 @@ class AccountTransaction:
         cls._conection.sesion.add(user)
         try:
             cls._conection.sesion.commit()
+            print("Usuario " + args.username + " persistido con exito.")
         except IntegrityError:
             print("Nombre de usuario ya existente.")
 
@@ -156,6 +176,13 @@ def start_commands() -> argparse.Namespace:
         required=False,
     )
     saved.add_argument(
+        "--update",
+        help="Elige la complegidad del password a generar (max=-ccc).",
+        default=0,
+        action="store_true",
+        required=False,
+    )
+    saved.add_argument(
         "--platform",
         "-m",
         type=str,
@@ -168,9 +195,8 @@ def start_commands() -> argparse.Namespace:
         help="La longitud de la contraseña.",
         type=int,
         required=False,
-        default=lenth_password,
     )
-    saved.set_defaults(func=AccountTransaction.saved_account)
+    saved.set_defaults(func=saved_account)
 
     getting = subparse.add_parser("get", help="Comando para recuperar un usuario.")
     getting.add_argument(
@@ -196,7 +222,7 @@ def start_commands() -> argparse.Namespace:
         help="Opcion para activar la shell con el usuario autenticado.",
         action="store_true",
     )
-    getting.set_defaults(func=AccountTransaction.getting_account)
+    getting.set_defaults(func=get_account)
 
     return parse.parse_args()
 
@@ -220,7 +246,7 @@ class Conection:
 
 class PasswordGenerator(BaseModel):
     configuration: Dict[str, bool] = Field(default=configuration)
-    length: int = Field(default=lenth_password)
+    length: int = Field(default=15)
     # configuration: Dict[str, bool] = Field(default=configuration)
 
     @computed_field
@@ -246,7 +272,7 @@ class PasswordGeneratorOrm(Base):
     id: Mapped[int] = mapped_column(
         primary_key=True, nullable=False, autoincrement=True
     )
-    generated_password: Mapped[str] = mapped_column(String(lenth_password))
+    generated_password: Mapped[str] = mapped_column(String(50))
     platform: Mapped[str] = mapped_column(String(20), nullable=False)
     # configuration: Dict[str, bool] = Field(default=configuration)
 
@@ -267,7 +293,7 @@ class UserOrm(Base):
     username: Mapped[str] = mapped_column(
         String(20), index=True, nullable=False, unique=True
     )
-    password: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
+    password: Mapped[str] = mapped_column(String(50), nullable=False)
     generated_passwords = relationship(
         "PasswordGeneratorOrm", back_populates="users", cascade="all, delete-orphan"
     )
@@ -295,10 +321,6 @@ def main() -> None:
 
     Base.metadata.create_all(conection.engine)
     AccountTransaction.set_conection(conection)
-
-    # with Session(conection.engine) as sesion:
-    #     sesion.add_all([piter, paco])
-    #     sesion.commit()
 
     # stmt = select(UserOrm).where(UserOrm.username.in_(["juan"]))
     #
