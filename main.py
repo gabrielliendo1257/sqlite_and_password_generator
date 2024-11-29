@@ -51,16 +51,14 @@ def saved_account(args: argparse.Namespace):
 
         if args.update:
             AccountTransaction.add_new_passgwn(args)
-        elif not args.update:
+        elif not args.update and hasattr(args, "c"):
             if int(args.c) == 0:
                 configuration["numbers"] = False
                 configuration["simbols"] = False
             elif int(args.c) == 1:
                 configuration["simbols"] = False
-            elif int(args.c) == 2 and args.c > 1:
-                pass
             else:
-                print("[ERROR] No se encontro el parametro -c.")
+                pass
     elif user == None:
         AccountTransaction.saved_account(args)
 
@@ -106,27 +104,19 @@ class AccountTransaction:
 
     @classmethod
     def getting_account(cls, args: argparse.Namespace) -> UserOrm | None:
-        # stmt = select(UserOrm).where(UserOrm.username.in_([args.account]))
-        #
-        # for user in cls._conection.sesion.scalars(stmt):
         #     print(user)
         get_account_stmt = (
             select(UserOrm)
             .where(UserOrm.username == args.username)
             .where(UserOrm.password == args.password)
         )
-        # get_account_atmt = select(UserOrm).where(UserOrm.username.in_([args.account]))
         user = cls._conection.sesion.scalars(get_account_stmt).first()
 
-        if user:
-            print(
-                "Usuario " + args.username + " encontrado en la base de datos --> ",
-                user,
-            )
+        if user != None:
             return user
-        elif not user:
+        else:
             print("Usuario no existente o usuario y/o contraseña incorrectos.")
-        # return cls._conection.sesion.scalars(stmt).one()
+            return None
 
     @classmethod
     def saved_account(cls, args: argparse.Namespace):
@@ -135,7 +125,6 @@ class AccountTransaction:
             obj_passgen = PasswordGenerator(length=args.length)
         else:
             obj_passgen = PasswordGenerator()
-
 
         user = UserOrm(
             username=args.username,
@@ -247,7 +236,6 @@ class Conection:
 class PasswordGenerator(BaseModel):
     configuration: Dict[str, bool] = Field(default=configuration)
     length: int = Field(default=15)
-    # configuration: Dict[str, bool] = Field(default=configuration)
 
     @computed_field
     @property
@@ -322,13 +310,6 @@ def main() -> None:
     Base.metadata.create_all(conection.engine)
     AccountTransaction.set_conection(conection)
 
-    # stmt = select(UserOrm).where(UserOrm.username.in_(["juan"]))
-    #
-    # for user in conection.sesion.scalars(stmt):
-    #     print(user)
-
-    # co_model_user = User.model_validate(co_orm_user)
-    # print(co_model_user)
     s_commands = start_commands()
     s_commands.func(s_commands)
 
