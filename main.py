@@ -7,6 +7,7 @@ import getpass
 import string
 import random
 from platform import system
+from argon2 import PasswordHasher
 from typing import Dict, List
 from sqlalchemy import Column, ForeignKey, Integer, String, create_engine, select
 from sqlalchemy.exc import IntegrityError
@@ -44,27 +45,43 @@ configuration: Dict[str, bool] = {
 }
 
 
+# services/
 def saved_account(args: argparse.Namespace):
-    user = AccountTransaction.getting_account(args)
+    user = None
+    try:
+        user = AccountTransaction.getting_account(args)
+    except AssertionError as e:
+        print(e.args[0])
 
     if user != None and hasattr(args, "update"):
 
+        if int(args.c) == 1:
+            configuration["numbers"] = False
+            configuration["simbols"] = False
+            configuration["upper_case"] = False
+        elif int(args.c) == 2:
+            configuration["simbols"] = False
+            configuration["numbers"] = False
+        elif int(args.c) == 3:
+            configuration["simbols"] = False
+        else:
+            pass
+
         if args.update:
             AccountTransaction.add_new_passgwn(args)
-        elif not args.update and hasattr(args, "c"):
-            if int(args.c) == 0:
-                configuration["numbers"] = False
-                configuration["simbols"] = False
-            elif int(args.c) == 1:
-                configuration["simbols"] = False
-            else:
-                pass
+
     elif user == None:
         AccountTransaction.saved_account(args)
 
+    print(configuration)
 
-def get_account(args: argparse.Namespace) -> UserOrm:
-    return AccountTransaction.getting_account(args)
+
+def get_account(args: argparse.Namespace) -> UserOrm | None:
+
+    try:
+        print(AccountTransaction.getting_account(args))
+    except AssertionError as e:
+        print(e.args[0])
 
 
 class AccountTransaction:
@@ -103,20 +120,24 @@ class AccountTransaction:
             print("Usuario " + user.username + " actualizado con exito.")
 
     @classmethod
-    def getting_account(cls, args: argparse.Namespace) -> UserOrm | None:
+    def getting_account(cls, args: argparse.Namespace) -> UserOrm:
         #     print(user)
-        get_account_stmt = (
-            select(UserOrm)
-            .where(UserOrm.username == args.username)
-            .where(UserOrm.password == args.password)
-        )
+        get_account_stmt = select(UserOrm).where(UserOrm.username == args.username)
         user = cls._conection.sesion.scalars(get_account_stmt).first()
 
-        if user != None:
-            return user
+        ph = PasswordHasher()
+
+        if user != None and ph.verify(hash=user.password, password=args.password):
+            print(
+                "Verificacion --> ",
+                ph.verify(hash=user.password, password=args.password),
+            )
         else:
-            print("Usuario no existente o usuario y/o contraseña incorrectos.")
-            return None
+            raise AssertionError(
+                "Usuario no existente o usuario y/o contraseña incorrectos username=",
+                args.username,
+            )
+        return user
 
     @classmethod
     def saved_account(cls, args: argparse.Namespace):
@@ -126,9 +147,11 @@ class AccountTransaction:
         else:
             obj_passgen = PasswordGenerator()
 
+        ph = PasswordHasher()
+
         user = UserOrm(
             username=args.username,
-            password=args.password,
+            password=ph.hash(args.password),
             generated_passwords=[
                 PasswordGeneratorOrm(
                     generated_password=obj_passgen.model_dump()["generated_password"],
@@ -145,6 +168,7 @@ class AccountTransaction:
             print("Nombre de usuario ya existente.")
 
 
+# bootstrap
 def start_commands() -> argparse.Namespace:
     parse = argparse.ArgumentParser()
 
@@ -304,7 +328,6 @@ class User(BaseModel):
 
 def main() -> None:
 
-    # print(co_orm_user)
     conection = Conection()
 
     Base.metadata.create_all(conection.engine)
